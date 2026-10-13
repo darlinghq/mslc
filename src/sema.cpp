@@ -536,8 +536,7 @@ Id TypeTable::zero(Id type) {
 	// so an aggregate needs OpConstantComposite over its parts. No local of that
 	// shape parses yet, and reporting it beats emitting a scalar for it.
 	if (isAggregate(type)) {
-		throw CompileError("a local of an aggregate type cannot be zero initialised yet; "
-			"give it an initialiser");
+		return _builder.emitDeclTyped(spirv::OpConstantNull, type, { });
 	}
 
 	// A bool has no literal form, so it needs its own opcode rather than a zero
@@ -2161,6 +2160,13 @@ namespace {
 		binding.id = id;
 		binding.isPointer = true;
 		binding.pointeeType = typeId;
+		binding.pointeeMsl = declaration.type;
+		if (!declaration.type.namedType.empty()) {
+			binding.structType = _unit.findStruct(declaration.type.namedType);
+			if (!binding.structType) {
+				throw CompileError("undeclared struct type \"" + declaration.type.namedType + "\"");
+			}
+		}
 		binding.storageClass = spirv::StorageClass::Function;
 		_bindings[declaration.name] = binding;
 	}
