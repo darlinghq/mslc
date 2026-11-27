@@ -435,6 +435,11 @@ Id Emitter::emitIdentifier(const Expression& expression) {
 	// The entry point's own names first, then the module's: a constant declared
 	// at file scope is not a parameter of the entry point that reads it.
 	const Binding* found = findResourceBinding(expression.name, expression.fileScope);
+	if (found && found->resourceStruct) {
+		throw CompileError("\"" + expression.name + "\" is a " + found->resourceStruct->name + ", a struct of texture "
+			"and sampler pointers, which is a set of names resolved while compiling and not a value: mslc takes "
+			"its members, and passes it to a function by reference");
+	}
 	if (!found) {
 		if (_functionConstants.count(expression.name)) {
 			return functionConstantValue(expression.name, false);

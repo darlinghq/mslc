@@ -859,6 +859,24 @@ brace or paren initialisation of a texture or sampler local (`b{t}`, `b(t)`, `sa
 `= {s}`), `thread auto& b = t;`, and a struct texture member picked by a conditional. A dead chain (`sampler u = t;` never sampled) still lists
 the embedded sampler it names, which Apple would not record.
 
+## Structs of texture and sampler pointers
+
+A struct whose members are all thread pointers to textures and samplers, or such structs (ANGLE's `TextureEnv<T>` and
+the struct of them its WebGL shaders pass to every function), is a set of names for descriptors, resolved while
+compiling as a texture pointer is. A local of it is declared without an initialiser (or as a copy of another), and
+each member is bound by an assignment `s.texture = &t;` (or a call that returns the address). A function that takes
+one by reference or by value is emitted once per set of descriptors it is given, and the struct is not a parameter
+of the SPIR-V function. A texture or sampler type is a template argument (`TextureEnv<texture2d<float>>`), and a
+function template deduces T from `TextureEnv<texture2d<T>>` and from a texture taken by `thread T&`. Tests:
+`tests/probes/textures/texture_env_*`.
+
+Apple accepts, and mslc refuses (each a loud error): a member assigned under a condition or in a loop (relative to
+the declaration), assigned twice, or read before it is assigned; passing a struct one of whose members is not
+assigned; assigning a member of a parameter's struct; passing a struct built from a helper's own texture
+parameters to another function; assigning a whole struct (`a = b;`); a struct that mixes texture or sampler
+pointers with other members; a constant reference parameter of such a struct; and a texture or sampler member
+that is not a pointer (an argument buffer).
+
 ## Pointers and references to textures and samplers
 
 `thread texture2d<float>* p = &t;` (also for a sampler), a thread pointer or thread reference parameter of a helper,

@@ -686,7 +686,7 @@ void Parser::parseResourceType(Type& type) {
 		}
 	}
 
-	expect(TokenKind::Greater, ("to close the sampled type of " + name).c_str());
+	closeAngle(("to close the sampled type of " + name).c_str());
 	if (isBuffer && access == "sample") {
 		throw CompileError("texture_buffer<" + component + ", access::sample> is invalid: a texture_buffer has no "
 			"sampler, and takes access::read, access::write or access::read_write");

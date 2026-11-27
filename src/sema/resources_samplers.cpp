@@ -580,6 +580,28 @@ std::optional<Emitter::ResolvedResource> Emitter::resourceOf(const Expression& e
 		}
 		case ExpressionKind::Call:
 			return resourceCall(expression, depth);
+		case ExpressionKind::Member: {
+			// A member of a struct of texture and sampler pointers: the descriptor its assignment named.
+			const Binding* aggregate = expression.isArrow || !expression.left ? nullptr
+				: resourceAggregate(*expression.left);
+			if (!aggregate) {
+				return std::nullopt;
+			}
+			const auto found = aggregate->resourceFields->find(expression.memberName);
+			if (found == aggregate->resourceFields->end()) {
+				for (const StructField& field: aggregate->resourceStruct->fields) {
+					if (field.name == expression.memberName && !resourceStructOf(field.type)) {
+						throw CompileError("the member \"" + expression.memberName + "\" of a "
+							+ aggregate->resourceStruct->name + " is read before it is assigned");
+					}
+				}
+				return std::nullopt;
+			}
+			if (found->second.resourceStruct) {
+				return std::nullopt;
+			}
+			return ResolvedResource{ found->second, true };
+		}
 		default:
 			return std::nullopt;
 	}
@@ -592,7 +614,20 @@ std::optional<Emitter::ResolvedResource> Emitter::resourceCall(const Expression&
 	if (!call.left || call.left->kind != ExpressionKind::Identifier) {
 		return std::nullopt;
 	}
-	const std::vector<HelperFunction*> named = helpersCalled(call);
+	std::vector<HelperFunction*> named = helpersCalled(call);
+	// A function template called with textures and samplers only (ANGLE's "thread T* addressof(thread T&)"):
+	// the instance the call chooses. Choosing it emits nothing, since none of its arguments is a value.
+	if (named.empty() && !call.arguments.empty()) {
+		const std::vector<const FunctionTemplate*> templates = templatesCalled(call);
+		const bool resourceArguments = std::all_of(call.arguments.begin(), call.arguments.end(),
+			[&](const ExpressionPtr& argument) { return resourceOf(*argument, depth + 1).has_value(); });
+		if (!templates.empty() && resourceArguments) {
+			std::vector<Id> prepared;
+			if (HelperFunction* made = resolveOverload(call, {}, templates, {}, prepared)) {
+				named.push_back(made);
+			}
+		}
+	}
 	const auto returnsResource = [](const HelperFunction* helper) {
 		return helper->definition->returnType.resource != ResourceKind::None;
 	};

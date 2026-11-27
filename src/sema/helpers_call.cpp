@@ -58,6 +58,10 @@ Emitter::OverloadArgument Emitter::classifyArgument(const Expression& expression
 	} else if (expression.kind == ExpressionKind::Unary && expression.unaryOperator == UnaryOperator::AddressOf) {
 		argument.pointerLike = true;
 	}
+	if (const Binding* aggregate = resourceAggregate(expression)) {
+		argument.resourceStruct = aggregate->resourceStruct;
+		return argument;
+	}
 	if (argument.kind == OverloadArgument::Kind::Variable) {
 		const Expression& root = storeRoot(expression);
 		const Binding* local = root.kind == ExpressionKind::Identifier && !root.fileScope
@@ -77,6 +81,13 @@ Emitter::ConversionCost Emitter::conversionCost(const OverloadArgument& argument
 	const auto exact = [](int qualification) { return ConversionCost { kExact, qualification }; };
 	const ConversionCost none;
 
+	// A struct of texture and sampler pointers binds a reference to (or a copy of) the same struct only.
+	if (argument.resourceStruct || resourceStructOf(type)) {
+		const bool same = argument.resourceStruct && !type.isPointer && !type.arrayLength
+			&& argument.resourceStruct == _unit.findStruct(type.namedType)
+			&& (!parameter.isReference || parameter.type.addressSpace == AddressSpace::Thread);
+		return same ? exact(type.isConst ? 1 : 0) : none;
+	}
 	if (type.resource != ResourceKind::None) {
 		const Binding* binding = argument.kind == OverloadArgument::Kind::Resource ? argument.binding : nullptr;
 		return binding && sameResourceType(binding->pointeeMsl, type) ? exact(-1) : none;
@@ -459,9 +470,15 @@ Id Emitter::helperFunctionId(HelperFunction& helper) {
 		std::vector<Id> signature { helper.returnType };
 		for (size_t i = 0; i < definition.parameters.size(); ++i) {
 			const Parameter& parameter = definition.parameters[i];
-			if (i < helper.threadgroupVariables.size() && helper.threadgroupVariables[i] != InvalidId) {
+			if ((i < helper.threadgroupVariables.size() && helper.threadgroupVariables[i] != InvalidId)
+				|| (i < helper.resourceStructs.size() && helper.resourceStructs[i])) {
 				helper.parameterTypes.push_back(InvalidId);
 				continue;
+			}
+			if (resourceStructOf(parameter.type)) {
+				throw CompileError("parameter \"" + parameter.name + "\" of \"" + definition.name + "\" is a struct of "
+					"texture and sampler pointers, which a function takes only from a call that names one (it is "
+					"emitted once per set of descriptors), so \"" + definition.name + "\" is not lowered here");
 			}
 			if (parameter.type.resource != ResourceKind::None) {
 				helper.parameterTypes.push_back(helperParameterType(parameter.type));
@@ -560,6 +577,9 @@ Id Emitter::emitHelperCall(const Expression& call, HelperFunction& generic, cons
 	}
 	for (size_t i = 0; i < call.arguments.size(); ++i) {
 		const Parameter& parameter = definition.parameters[first + i];
+		if (first + i < helper.resourceStructs.size() && helper.resourceStructs[first + i]) {
+			continue;
+		}
 		if (parameter.type.resource != ResourceKind::None) {
 			operands.push_back(resourceArgument(*call.arguments[i], parameter, definition.name));
 			continue;
@@ -707,9 +727,31 @@ Emitter::HelperFunction& Emitter::pointerSpecialisation(const Expression& call, 
 	const FunctionDecl& definition = *generic.definition;
 	std::vector<uint32_t> lengths(definition.parameters.size(), 0);
 	std::vector<Id> variables(definition.parameters.size(), InvalidId);
+	std::vector<std::shared_ptr<Binding>> resourceStructs(definition.parameters.size());
+	std::vector<Id> resourceLeaves;
 	bool any = false;
 	for (size_t i = 0; i < call.arguments.size(); ++i) {
 		const Parameter& parameter = definition.parameters[first + i];
+		if (const StructDecl* resources = resourceStructOf(parameter.type)) {
+			const std::string what = "argument " + std::to_string(i + 1) + " of the call to \"" + definition.name
+				+ "\"";
+			if (parameter.isReference && parameter.type.addressSpace == AddressSpace::Constant) {
+				throw CompileError(what + ": parameter \"" + parameter.name + "\" is a constant reference to a "
+					"struct of texture and sampler pointers, which is not lowered; take it by thread reference");
+			}
+			const Binding* aggregate = resourceAggregate(*call.arguments[i]);
+			if (!aggregate || aggregate->resourceStruct != resources) {
+				throw CompileError(what + " has to name a " + resources->name + " (a local, a member of one, or "
+					"a parameter of the calling function)");
+			}
+			resourceStructLeaves(*aggregate, "", resourceLeaves, what);
+			resourceLeaves.push_back(InvalidId);
+			auto snapshot = std::make_shared<Binding>(*aggregate);
+			snapshot->resourceParameter = true;
+			resourceStructs[first + i] = snapshot;
+			any = true;
+			continue;
+		}
 		if (!parameter.type.isPointer || parameter.type.resource != ResourceKind::None) {
 			continue;
 		}
@@ -778,10 +820,12 @@ Emitter::HelperFunction& Emitter::pointerSpecialisation(const Expression& call, 
 
 	std::vector<uint32_t> key = lengths;
 	key.insert(key.end(), variables.begin(), variables.end());
+	key.insert(key.end(), resourceLeaves.begin(), resourceLeaves.end());
 	const auto slot = _pointerSpecialisations.emplace(std::make_pair(generic.definition, key), generic);
 	if (slot.second) {
 		slot.first->second.arrayLengths = lengths;
 		slot.first->second.threadgroupVariables = variables;
+		slot.first->second.resourceStructs = resourceStructs;
 	}
 	return slot.first->second;
 }

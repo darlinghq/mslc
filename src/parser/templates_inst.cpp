@@ -85,7 +85,7 @@ FunctionDecl Parser::parseInstance(const FunctionTemplate& declaration, const st
 			if (deducedReturn) {
 				decl.returnType = deducedReturnType();
 			} else {
-				decl.returnType = parseType();
+				decl.returnType = parseType(true);
 			}
 		} catch (const DependentClassInstance&) {
 			if (!deducing) {
@@ -118,7 +118,11 @@ FunctionDecl Parser::parseInstance(const FunctionTemplate& declaration, const st
 		advance();
 		takeReferenceReturn(decl, quoted);
 	}
-	if (declaration.stage == Stage::None) {
+	// "thread T*" while the signature is read to deduce T: whether T is a texture or sampler, the one pointee a
+	// function returns a pointer to, is known only in the instance, which is checked when it is made.
+	const bool dependentPointer = deducing && decl.returnType.isPointer && decl.returnType.addressSpace == AddressSpace::Thread
+		&& isDeductionMarker(decl.returnType);
+	if (declaration.stage == Stage::None && !dependentPointer) {
 		rejectUnloweredReturn(decl.returnType, quoted);
 	}
 	if (kind() != TokenKind::Identifier || current().text != written) {
@@ -395,12 +399,15 @@ TemplateArgument Parser::parseTemplateArgument() {
 			|| (_unit.findStruct(name) != nullptr && !localHides)))
 		|| (kind() == TokenKind::Identifier && isIntegerSpecifier(current().text)) || atLibraryVec(vecTokens)
 		|| atTraitType(vecTokens);
-	if (isTypeArgument) {
-		argument.type = parseType();
-		if (argument.type.isPointer || argument.type.arrayLength || argument.type.resource != ResourceKind::None
-			|| !argument.type.enumName.empty() || argument.type.addressSpace != AddressSpace::None
-			|| argument.type.isVolatile) {
-			throw CompileError("a template argument that is a pointer, an array, a resource, an enum, volatile or "
+	// A texture or sampler type ("TextureEnv<metal::texture2d<float>>"): what the template makes of it, a pointer
+	// or a reference, is a compile-time name for a descriptor, as anywhere else.
+	const std::string_view unqualified = std::string_view(name).substr(name.compare(0, 7, "metal::") == 0 ? 7 : 0);
+	const bool resourceArgument = named && !localHides && !_declared.count(name) && isResourceTypeName(unqualified);
+	if (isTypeArgument || resourceArgument) {
+		argument.type = parseType(resourceArgument);
+		if (argument.type.isPointer || argument.type.arrayLength || !argument.type.enumName.empty()
+			|| argument.type.addressSpace != AddressSpace::None || argument.type.isVolatile) {
+			throw CompileError("a template argument that is a pointer, an array, an enum, volatile or "
 				"in an address space is not lowered");
 		}
 		return argument;

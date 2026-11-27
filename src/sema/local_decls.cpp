@@ -604,6 +604,10 @@ void Emitter::emitAutoDeclaration(const VariableDeclaration& declaration) {
 // auto, or InvalidId when the declaration's own initialiser is evaluated here.
 void Emitter::emitValueDeclaration(const VariableDeclaration& declaration, const Type& type, Id deduced,
 	bool storageOnly) {
+	if (const StructDecl* resources = resourceStructOf(type)) {
+		declareResourceStruct(declaration, *resources);
+		return;
+	}
 	if (type.resource != ResourceKind::None) {
 		if (declaration.initializer) {
 			bindResourceAlias(declaration, &type);

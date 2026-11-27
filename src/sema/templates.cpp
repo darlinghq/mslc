@@ -154,6 +154,16 @@ bool Emitter::deduceTemplateArguments(const FunctionTemplate& declaration, const
 					}
 					// A qualifier the pattern spells has to be the argument's, and is not part of T.
 					Type bound = got.type;
+					// texture2d<T> takes T from a texture of the same kind, depth, multisampling and access.
+					if (want.type.resource != ResourceKind::None) {
+						if (got.type.resource != want.type.resource || got.type.isDepth != want.type.isDepth
+							|| got.type.isMultisampled != want.type.isMultisampled
+							|| got.type.textureAccess != want.type.textureAccess || got.type.arrayLength) {
+							return false;
+						}
+						bound = Type();
+						bound.scalar = got.type.scalar;
+					}
 					if (want.type.isConst) {
 						if (!got.type.isConst) {
 							return false;
@@ -180,6 +190,12 @@ bool Emitter::deduceTemplateArguments(const FunctionTemplate& declaration, const
 				throw refuse(i, "to a parameter that is an array or a pointer to an instance of a class template");
 			}
 			const OverloadArgument& argument = arguments[i];
+			if (argument.resourceStruct) {
+				if (!matchInstance(matchInstance, parameter.type.namedType, argument.resourceStruct->name)) {
+					return false;
+				}
+				continue;
+			}
 			TypeTable::StructForm form;
 			if (argument.kind == OverloadArgument::Kind::Array || argument.kind == OverloadArgument::Kind::Resource
 				|| argument.pointerLike || !_types.structForm(_builder.typeOf(argument.value), form)
@@ -248,7 +264,8 @@ bool Emitter::deduceTemplateArguments(const FunctionTemplate& declaration, const
 				throw refuse(i, "to a parameter that is an array or a texture");
 			}
 			// A T taken by value from a texture or a sampler is that texture's or sampler's type.
-			if (argument.kind == OverloadArgument::Kind::Resource && !parameter.isReference
+			if (argument.kind == OverloadArgument::Kind::Resource
+				&& (!parameter.isReference || parameter.type.addressSpace == AddressSpace::Thread)
 				&& !parameter.type.isVector() && !argument.binding->pointeeMsl.arrayLength) {
 				value = argument.binding->pointeeMsl;
 				value.isConst = false;

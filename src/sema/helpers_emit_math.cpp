@@ -22,7 +22,7 @@ void Emitter::emitHelper(const HelperFunction& helper) {
 	std::vector<Id> values;
 	for (size_t i = 0; i < helper.parameterTypes.size(); ++i) {
 		if (helper.parameterTypes[i] == InvalidId) {
-			values.push_back(helper.threadgroupVariables[i]);
+			values.push_back(i < helper.threadgroupVariables.size() ? helper.threadgroupVariables[i] : InvalidId);
 			continue;
 		}
 		values.push_back(_builder.emitTyped(spirv::OpFunctionParameter, helper.parameterTypes[i], { }));
@@ -53,8 +53,14 @@ void Emitter::emitHelper(const HelperFunction& helper) {
 			continue;
 		}
 
+		if (i < helper.resourceStructs.size() && helper.resourceStructs[i]) {
+			_bindings[parameter.name] = *helper.resourceStructs[i];
+			continue;
+		}
+
 		if (parameter.type.resource != ResourceKind::None) {
 			Binding bound;
+			bound.functionResource = true;
 			bound.id = values[i];
 			bound.isPointer = true;
 			bound.pointeeType = resourcePointee(parameter.type);
