@@ -194,12 +194,13 @@ const Type* Emitter::returningType(const Expression& call, std::string (*aspect)
 		}
 		// Not deduced yet. The one function a call can name is emitted here to learn it; with overloads,
 		// emitting each would emit ones the call does not choose, and a thread or threadgroup pointer
-		// parameter is specialised on the call's own array, so those are known once the call is emitted.
+		// parameter is specialised on the call's own array, so those are known once the call is emitted. So is a
+		// struct of texture and sampler pointers, on the descriptors it names.
 		if (returnTypeOf(definition).isAuto) {
 			const bool specialised = std::any_of(definition.parameters.begin(), definition.parameters.end(),
-				[](const Parameter& parameter) {
-					return parameter.type.isPointer && (parameter.type.addressSpace == AddressSpace::Thread
-						|| parameter.type.addressSpace == AddressSpace::Threadgroup);
+				[&](const Parameter& parameter) {
+					return (parameter.type.isPointer && (parameter.type.addressSpace == AddressSpace::Thread
+						|| parameter.type.addressSpace == AddressSpace::Threadgroup)) || resourceStructOf(parameter.type);
 				});
 			if (total > 1 || specialised) {
 				return nullptr;
@@ -353,7 +354,7 @@ Emitter::HelperFunction* Emitter::resolveOverload(const Expression& call, const 
 	for (size_t i = objects; i < arguments.size(); ++i) {
 		OverloadArgument& argument = arguments[i];
 		if (argument.kind == OverloadArgument::Kind::Array || argument.kind == OverloadArgument::Kind::Resource
-			|| argument.pointerLike) {
+			|| argument.pointerLike || argument.resourceStruct) {
 			continue;
 		}
 		const bool bound = std::any_of(lists.begin(), lists.end(), [&](const std::vector<Parameter>* list) {

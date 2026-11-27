@@ -47,7 +47,9 @@ void Parser::parseStructBody(StructDecl& decl) {
 		// "float x, y;" : each declarator after the first starts from the type
 		// before the first one's stars, and has its own attributes.
 		Type base;
-		const Type shared = parseType(false, false, &base);
+		// A texture or sampler member is lowered as a thread pointer only: a struct of them is a set of names for
+		// descriptors, resolved while compiling (see the emitter's resource structs).
+		const Type shared = parseType(true, false, &base);
 		for (bool first = true;; first = false) {
 			StructField field;
 			field.type = shared;
@@ -60,6 +62,11 @@ void Parser::parseStructBody(StructDecl& decl) {
 					"mslc lowers a device atomic_uint or atomic_int pointer parameter");
 			}
 			expectFieldName(field.name);
+			if (field.type.resource != ResourceKind::None && !isResourcePointer(field.type)) {
+				throw CompileError("the member \"" + field.name + "\" of \"" + decl.name + "\" is a texture or sampler "
+					"type (" + typeName(field.type) + "), which a member is lowered as only as a thread pointer "
+					"(thread texture2d<float>* t)");
+			}
 			if (field.type.isStatic) {
 				throw CompileError("a static data member is not supported (\"" + field.name + "\" in \""
 					+ decl.name + "\")");

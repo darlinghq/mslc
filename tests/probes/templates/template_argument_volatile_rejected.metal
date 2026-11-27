@@ -1,4 +1,4 @@
-// EXPECT: error a template argument that is a pointer, an array, a resource, an enum, volatile
+// EXPECT: error a template argument that is a pointer, an array, an enum, volatile
 // Refs #341: f<volatile float> is a different instance in Apple (is_same<T, float> is false); the
 // qualifier is not modelled, so the argument is refused and the template is never instantiated as float.
 #include <metal_stdlib>

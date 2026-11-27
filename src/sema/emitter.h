@@ -194,6 +194,9 @@ class Emitter {
 		// each directly rather than taking a pointer: drivers mishandle a Workgroup pointer parameter (the
 		// NVIDIA one loses stores made through one), and glslang never emits one.
 		std::vector<Id> threadgroupVariables;
+		// For a resource struct parameter, the caller's struct (null for any other): the helper is emitted once
+		// per list of the descriptors their fields name, and the parameter is not passed.
+		std::vector<std::shared_ptr<Binding>> resourceStructs;
 		// Where the first declaration of this signature sits (FunctionDecl::order):
 		// an overload is a candidate only from there down.
 		size_t firstOrder = 0;
@@ -367,6 +370,12 @@ uint32_t descriptorSet() const {
 	};
 	std::optional<ResolvedResource> resourceOf(const Expression& expression, unsigned depth = 0);
 	std::optional<ResolvedResource> resourceCall(const Expression& call, unsigned depth);
+	const StructDecl* resourceStructOf(const Type& type, unsigned depth = 0);
+	Binding* resourceAggregate(const Expression& expression);
+	bool assignResourceField(const Expression& left, const Expression& right, bool compound);
+	void declareResourceStruct(const VariableDeclaration& declaration, const StructDecl& decl);
+	void resourceStructLeaves(const Binding& aggregate, const std::string& path, std::vector<Id>& ids,
+		const std::string& what);
 	Binding resourceNamed(const Expression& expression, bool pointer, const std::string& what);
 	void emitTextureWrite(const Expression& call, const Binding& texture);
 	void emitTextureFence(const Expression& call, const Binding& texture);
@@ -642,6 +651,8 @@ uint32_t descriptorSet() const {
 		bool inConstant = false;
 		// Names a pointer or a buffer that is not a local array: not lowered as an argument.
 		bool pointerLike = false;
+		// Names a struct of texture and sampler pointers, which is not a value and is not evaluated.
+		const StructDecl* resourceStruct = nullptr;
 	};
 	OverloadArgument classifyArgument(const Expression& argument);
 	// Qualification orders two references or two pointers of one conversion rank (the one to a

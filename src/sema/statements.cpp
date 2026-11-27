@@ -289,6 +289,9 @@ void Emitter::requireStorable(const Expression& target) {
 
 void Emitter::emitAssignment(const Expression& left, const Expression& right,
 	std::optional<BinaryOperator> compound) {
+	if (assignResourceField(left, right, compound.has_value())) {
+		return;
+	}
 	requireStorable(left);
 	// A struct prvalue takes the trivial assignment: the right side is evaluated first, as
 	// Apple does, then the left, and the result is dropped.

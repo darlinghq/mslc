@@ -1,4 +1,4 @@
-// EXPECT: error "Tex" is the type texture2d<float>, a texture or sampler type, which mslc takes as a parameter only
+// EXPECT: error returns a pointer, an array, a texture or sampler, or a value in an address space
 // A type parameter deduced as a texture type cannot be the return type, as texture2d<float> cannot.
 #include <metal_stdlib>
 using namespace metal;

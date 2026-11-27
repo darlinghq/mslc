@@ -173,6 +173,18 @@ struct Binding {
 	// A constexpr sampler, at file scope or local: a const object, so a pointer or reference that is not to
 	// const does not bind it (Apple: no matching function, or "cannot initialize ... with ... const").
 	bool embeddedSampler = false;
+	// A struct of texture and sampler pointers (a resource struct, such as ANGLE's TextureEnv): not a value but a
+	// set of names for descriptors, resolved while compiling as a texture local is. resourceFields maps each
+	// assigned field to the descriptor it names, or to the binding of a nested resource struct.
+	const StructDecl* resourceStruct = nullptr;
+	std::shared_ptr<std::map<std::string, Binding>> resourceFields;
+	// The control depth the local was declared at: a field is assigned there only, so that no descriptor is
+	// chosen at run time.
+	uint32_t resourceDepth = 0;
+	// A helper's parameter: its fields are the caller's, and are not assigned in the helper.
+	bool resourceParameter = false;
+	// A texture or sampler parameter of a helper: an OpFunctionParameter, which no other function can name.
+	bool functionResource = false;
 	std::optional<FoldedConstant> folded;
 };
 

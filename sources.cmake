@@ -60,6 +60,7 @@ set(MSLC_LIBRARY_SOURCES
 	${CMAKE_CURRENT_LIST_DIR}/src/sema/overloads.cpp
 	${CMAKE_CURRENT_LIST_DIR}/src/sema/parameters.cpp
 	${CMAKE_CURRENT_LIST_DIR}/src/sema/resources_samplers.cpp
+	${CMAKE_CURRENT_LIST_DIR}/src/sema/resource_structs.cpp
 	${CMAKE_CURRENT_LIST_DIR}/src/sema/sizeof_places.cpp
 	${CMAKE_CURRENT_LIST_DIR}/src/sema/spec_constants.cpp
 	${CMAKE_CURRENT_LIST_DIR}/src/sema/stage_entry.cpp
